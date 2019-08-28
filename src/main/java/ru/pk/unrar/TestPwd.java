@@ -2,7 +2,7 @@ package ru.pk.unrar;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import ru.pk.unrar.parser.Parser;
+import ru.pk.unrar.parser.Reader;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -35,8 +35,8 @@ public class TestPwd {
         try (FileInputStream fis = new FileInputStream(f)) {
             log.info("Ok. File opened: {}", f.getAbsolutePath());
 
-            Parser parser = new Parser(fis);
-            parser.parse();
+            Reader reader = new Reader(fis);
+            reader.read();
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         } catch (IOException e) {

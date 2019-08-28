@@ -9,4 +9,7 @@ public class Body {
         this.bytes = bytes;
     }
 
+    public byte[] getBytes() {
+        return bytes;
+    }
 }

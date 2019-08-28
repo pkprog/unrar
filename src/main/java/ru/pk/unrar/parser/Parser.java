@@ -10,14 +10,15 @@ import ru.pk.unrar.rarformat.MainHeaderFlag;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 
 /**
  * Documentation from
  * https://codedread.github.io/bitjs/docs/unrar.html
+ * https://www.rarlab.com/technote.htm
  */
 public class Parser {
     private static Logger log = LoggerFactory.getLogger(Parser.class);
@@ -29,82 +30,63 @@ public class Parser {
         this.s = s;
     }
 
-    /**
-     * Overall .RAR file format:
-     *
-     * signature               7 bytes    (0x52 0x61 0x72 0x21 0x1A 0x07 0x00)
-     * [1st volume header]
-     * ...
-     * [2nd volume header]
-     * ...
-     * ...
-     * [nth volume header]
-     * ...
-     *
-     * In general, a modern single-volume RAR file has a MAIN_HEAD structure followed by multiple FILE_HEAD structures.
-     * @throws IOException
-     */
-    public void parse() throws IOException {
+    public Volume parse(byte headerTypeByte, byte[] headerFlagsBytes, byte[] headerSizeBytes, int volumeNumber) throws IOException {
+        final int BASE_HEAD_LENGTH = 7;
         log.debug("Start parsing");
 
-        Volume v;
-        int i = 1;
-        while ((v = nextVolume(i++)) != null) {
-            Header h = v.getHeader();
-            log.trace(h.toString());
-            Body b = v.getBody();
-        }
-
-        log.debug("End parsing");
-    }
-
-    private Volume nextVolume(final int volumeNumber) throws IOException {
-        log.trace("Start read next volume #{}", volumeNumber);
-
-        Volume volume = new Volume(volumeNumber);
-
-        log.trace("Read header");
-        byte[] headerCrcBytes = new byte[2];
-        int read1 = s.read(headerCrcBytes);
-        if (read1 < 0) {
-            return null;
-        }
-
-        int headerType = s.read();
-        log.debug("Header type=0x{}", Integer.toHexString(headerType));
-        Header header = new Header(HeaderType.getHeaderType(headerType));
-
-        byte[] headerFlagsBytes = new byte[2];
-        int read2 = s.read(headerFlagsBytes);
-        if (HeaderType.MAIN_HEAD.equals(header.getType())) {
-            header.setMainHeaderFlags(parseMainHeaderFlags(headerFlagsBytes));
-        } else if (HeaderType.FILE_HEAD.equals(header.getType())) {
-            header.setFileHeaderFlags(parseFileHeaderFlags(headerFlagsBytes));
-        }
-
-        byte[] headerSizeBytes = new byte[2];
-        int read3 = s.read(headerSizeBytes);
-        int headerSize = headerSizeBytes[0] << 8 | headerSizeBytes[1];
+        HeaderType headerType = HeaderType.getHeaderType(headerTypeByte);
+        log.debug("Header type=0x{} - {}", Integer.toHexString(headerTypeByte), headerType.name());
+        int headerSize = headerSizeBytes[1] << 8 | headerSizeBytes[0];
         log.debug("Found header size={} bytes", headerSize);
 
-        volume.setHeader(header);
-
-        byte[] bodyBytes = null;
+        Body body = null;
         if (headerSize - 7 > 0) {
-            bodyBytes = new byte[headerSize - 7];
-            int read4 = s.read(bodyBytes);
+            byte[] bodyBytes = new byte[headerSize - BASE_HEAD_LENGTH];
+            int readBodyCnt = s.read(bodyBytes);
+
+            log.trace("Body read. Size={}", readBodyCnt);
+            body = new Body(readBodyCnt, bodyBytes);
         }
 
-        //Если тело есть
-        if (bodyBytes != null) {
-            log.trace("Body read. Size={}", bodyBytes.length);
-            Body body = new Body(bodyBytes.length, bodyBytes);
-            volume.setBody(body);
+        Volume volume = new Volume(volumeNumber);
+        Header basicHeader = parseBasicHeader(headerTypeByte, headerFlagsBytes, headerSizeBytes);
+        if (HeaderType.FILE_HEAD.equals(headerType)) {
+            volume.setHeader(parseFileHeader(basicHeader, headerFlagsBytes, body == null ? null : body.getBytes()));
+        } else {
+            volume.setHeader(basicHeader);
         }
+        volume.setBody(body);
 
-        log.trace("End read next volume #{}", volumeNumber);
-
+        log.debug("End parsing");
         return volume;
+    }
+
+    private FileHeader parseFileHeader(Header basicHeader, byte[] headerFlagsBytes, byte[] bodyBytes) {
+        FileHeader header = new FileHeader(HeaderType.FILE_HEAD);
+        header.setFileHeaderFlags(parseFileHeaderFlags(headerFlagsBytes));
+
+        if (bodyBytes == null) {
+            return header;
+        }
+
+        byte[] packSizeBytes = Arrays.copyOfRange(bodyBytes, 0, 4);
+        byte[] unpackSizeBytes = Arrays.copyOfRange(bodyBytes, 4, 8);
+        byte[] hostOsBytes = Arrays.copyOfRange(bodyBytes, 8, 9);
+        byte[] fileCrcBytes = Arrays.copyOfRange(bodyBytes, 9, 13);
+        byte[] fileTimeBytes = Arrays.copyOfRange(bodyBytes, 13, 17);
+        byte[] unpVersBytes = Arrays.copyOfRange(bodyBytes, 17, 18);
+        byte[] methodBytes = Arrays.copyOfRange(bodyBytes, 18, 19);
+        byte[] nameSizeBytes = Arrays.copyOfRange(bodyBytes, 19, 21);
+        byte[] fileAttrBytes = Arrays.copyOfRange(bodyBytes, 21, 25);
+        //HighPackSize
+        //HighUnpSize
+        int nameSize = nameSizeBytes[1] << 8 | nameSizeBytes[0];
+        byte[] fileNameBytes = Arrays.copyOfRange(bodyBytes, 25, 25+nameSize);
+
+        log.debug("unpVers={}", unpVersBytes);
+        log.debug("File name={}" + new String(fileNameBytes));
+
+        return header;
     }
 
     private Collection<MainHeaderFlag> parseMainHeaderFlags(byte[] bytes) {
@@ -112,11 +94,11 @@ public class Parser {
             throw new ApplicationRuntimeException("bytes.lenght <> 2 for Main Header flags");
         }
 
-        int allFlags = bytes[0] << 8 | bytes[1];
+        int allFlags = bytes[1] << 8 | bytes[0];
 
         List<MainHeaderFlag> flagsResult = new LinkedList<>();
         for (MainHeaderFlag f: MainHeaderFlag.values()) {
-            if ((f.getValue() & allFlags) != 0) {
+            if (!MainHeaderFlag.UNKNOWN.equals(f) && (f.getValue() & allFlags) != 0) {
                 flagsResult.add(f);
             }
         }
@@ -129,7 +111,27 @@ public class Parser {
             throw new ApplicationRuntimeException("bytes.lenght <> 2 for File Header flags");
         }
 
-        return Collections.emptyList();
+        int allFlags = bytes[1] << 8 | bytes[0];
+
+        List<FileHeaderFlag> flagsResult = new LinkedList<>();
+        for (FileHeaderFlag f: FileHeaderFlag.values()) {
+            if (!FileHeaderFlag.UNKNOWN.equals(f) && (f.getValue() & allFlags) != 0) {
+                flagsResult.add(f);
+            }
+        }
+
+        return flagsResult;
+    }
+
+    private Header parseBasicHeader(byte headerTypeByte, byte[] headerFlagsBytes, byte[] headerSizeBytes) {
+        HeaderType headerType = HeaderType.getHeaderType(headerTypeByte);
+        log.debug("Header type=0x{} - {}", Integer.toHexString(headerTypeByte), headerType.name());
+        int headerSize = headerSizeBytes[1] << 8 | headerSizeBytes[0];
+        log.debug("Found header size={} bytes", headerSize);
+
+        Header header = new Header(headerType);
+        header.setMainHeaderFlags(parseMainHeaderFlags(headerFlagsBytes));
+        return header;
     }
 
 }
