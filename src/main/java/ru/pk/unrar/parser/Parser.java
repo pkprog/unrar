@@ -87,6 +87,12 @@ public class Parser {
         }
         int nameSize = nameSizeBytes[1] << 8 | nameSizeBytes[0];
         byte[] fileNameBytes = Arrays.copyOfRange(bodyBytes, 25+hp, 25+nameSize+hp);
+        int salt = 0;
+        if (header.getFileHeaderFlags().contains(FileHeaderFlag.LHD_SALT)) {
+            byte[] saltBytes = Arrays.copyOfRange(bodyBytes, 25 + hp + fileNameBytes.length, 25 + hp + fileNameBytes.length + 8);
+            salt = 8;
+            log.info("salt={}", new String(saltBytes));
+        }
 
         log.info(header.toString());
         log.info("unpVers={}", unpVersBytes);
