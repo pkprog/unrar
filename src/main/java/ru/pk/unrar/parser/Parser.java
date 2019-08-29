@@ -62,6 +62,7 @@ public class Parser {
     }
 
     private FileHeader parseFileHeader(Header basicHeader, byte[] headerFlagsBytes, byte[] bodyBytes) {
+        log.info("Found file header");
         FileHeader header = new FileHeader(HeaderType.FILE_HEAD);
         header.setFileHeaderFlags(parseFileHeaderFlags(headerFlagsBytes));
 
@@ -78,13 +79,18 @@ public class Parser {
         byte[] methodBytes = Arrays.copyOfRange(bodyBytes, 18, 19);
         byte[] nameSizeBytes = Arrays.copyOfRange(bodyBytes, 19, 21);
         byte[] fileAttrBytes = Arrays.copyOfRange(bodyBytes, 21, 25);
-        //HighPackSize
-        //HighUnpSize
+        int hp = 0;
+        if (header.getFileHeaderFlags().contains(FileHeaderFlag.LHD_LARGE)) {
+            byte[] highPackSizeBytes = Arrays.copyOfRange(bodyBytes, 25, 29);
+            byte[] highUnpSizeBytes = Arrays.copyOfRange(bodyBytes, 29, 33);
+            hp = 8;
+        }
         int nameSize = nameSizeBytes[1] << 8 | nameSizeBytes[0];
-        byte[] fileNameBytes = Arrays.copyOfRange(bodyBytes, 25, 25+nameSize);
+        byte[] fileNameBytes = Arrays.copyOfRange(bodyBytes, 25+hp, 25+nameSize+hp);
 
-        log.debug("unpVers={}", unpVersBytes);
-        log.debug("File name={}" + new String(fileNameBytes));
+        log.info("unpVers={}", unpVersBytes);
+        log.info("File name={}", new String(fileNameBytes));
+        log.info("LHD_LARGE={}", header.getFileHeaderFlags().contains(FileHeaderFlag.LHD_LARGE));
 
         return header;
     }
