@@ -32,7 +32,7 @@ public class Parser {
 
     public Volume parse(byte headerTypeByte, byte[] headerFlagsBytes, byte[] headerSizeBytes, int volumeNumber) throws IOException {
         final int BASE_HEAD_LENGTH = 7;
-        log.debug("Start parsing");
+        log.trace("Start parsing");
 
         HeaderType headerType = HeaderType.getHeaderType(headerTypeByte);
         log.debug("Header type=0x{} - {}", Integer.toHexString(headerTypeByte), headerType.name());
@@ -57,13 +57,13 @@ public class Parser {
         }
         volume.setBody(body);
 
-        log.debug("End parsing");
+        log.trace("End parsing");
         return volume;
     }
 
     private FileHeader parseFileHeader(Header basicHeader, byte[] headerFlagsBytes, byte[] bodyBytes) {
         log.info("Found file header");
-        FileHeader header = new FileHeader(HeaderType.FILE_HEAD);
+        FileHeader header = new FileHeader(HeaderType.FILE_HEAD, basicHeader);
         header.setFileHeaderFlags(parseFileHeaderFlags(headerFlagsBytes));
 
         if (bodyBytes == null) {
@@ -88,6 +88,7 @@ public class Parser {
         int nameSize = nameSizeBytes[1] << 8 | nameSizeBytes[0];
         byte[] fileNameBytes = Arrays.copyOfRange(bodyBytes, 25+hp, 25+nameSize+hp);
 
+        log.info(header.toString());
         log.info("unpVers={}", unpVersBytes);
         log.info("File name={}", new String(fileNameBytes));
         log.info("LHD_LARGE={}", header.getFileHeaderFlags().contains(FileHeaderFlag.LHD_LARGE));

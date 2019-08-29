@@ -13,6 +13,11 @@ public class FileHeader extends Header {
         super(type);
     }
 
+    public FileHeader(HeaderType type, Header basicHeader) {
+        super(type);
+        this.setMainHeaderFlags(basicHeader.getMainHeaderFlags());
+    }
+
     public Collection<FileHeaderFlag> getFileHeaderFlags() {
         return fileHeaderFlags;
     }
@@ -25,7 +30,6 @@ public class FileHeader extends Header {
     public String toString() {
         StringJoiner sj = new StringJoiner(", ", FileHeader.class.getSimpleName() + "[", "]");
         sj.add("Base:" + super.toString());
-        sj.add("fileHeaderFlags=" + fileHeaderFlags);
 
         StringJoiner sjFhd = new StringJoiner(",", "{", "}");
         if (fileHeaderFlags != null && fileHeaderFlags.size() > 0) {

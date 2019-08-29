@@ -41,7 +41,7 @@ public class Reader {
      * @throws IOException
      */
     public void read() throws IOException {
-        log.debug("Start parsing");
+        log.trace("Start reading");
 
         Volume vSignature = readSignature();
 
@@ -53,7 +53,7 @@ public class Reader {
             Body b = v.getBody();
         }
 
-        log.debug("End parsing");
+        log.trace("End reading");
     }
 
     private Volume readSignature() throws IOException {
